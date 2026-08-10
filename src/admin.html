@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>admin · radio · 013370000.xyz</title>
+
+  <link rel="icon" type="image/png" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📻</text></svg>" />
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap');
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'IBM Plex Mono', 'Courier New', monospace;
+      font-size: 13px;
+      margin: 0;
+      padding: 0;
+      background: #050505;
+      color: #c8c8c8;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 48px 24px 64px;
+    }
+
+    h1 {
+      font-size: 15px;
+      font-weight: 500;
+      margin: 0 0 4px;
+      color: #f0f0f0;
+      letter-spacing: 0.01em;
+    }
+
+    p.subtitle {
+      margin: 0 0 28px;
+      color: #555;
+      font-size: 12px;
+    }
+
+    .card {
+      display: grid;
+      gap: 0;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      overflow: hidden;
+      background: #0a0a0a;
+      margin-bottom: 24px;
+    }
+
+    .row {
+      display: grid;
+      gap: 2px;
+      font-size: 11px;
+      color: #444;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #1a1a1a;
+      padding: 12px 16px;
+      background: #0a0a0a;
+    }
+
+    .row .val {
+      font-size: 13px;
+      color: #d8d8d8;
+      text-transform: none;
+      letter-spacing: normal;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .actions-bar {
+      padding: 12px 16px;
+      background: #0f0f0f;
+      border-top: 1px solid #1a1a1a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    button.btn-skip {
+      border: 1px solid #2a1515;
+      background: #150a0a;
+      color: #b05050;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 8px 16px;
+      border-radius: 3px;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    button.btn-skip:hover {
+      background: #200d0d;
+      color: #e06060;
+    }
+
+    .section-title {
+      font-size: 11px;
+      color: #555;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 8px;
+    }
+
+    .queue-list, .search-list {
+      display: grid;
+      gap: 0;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      overflow: hidden;
+      background: #0a0a0a;
+      margin-bottom: 24px;
+    }
+
+    .queue-header {
+      font-size: 11px;
+      color: #444;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 10px 16px;
+      background: #080808;
+      border-bottom: 1px solid #1a1a1a;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .item-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 16px;
+      border-bottom: 1px solid #151515;
+      font-size: 12px;
+      background: #0a0a0a;
+      cursor: grab;
+      user-select: none;
+      transition: background 0.15s;
+    }
+
+    .item-row:active {
+      cursor: grabbing;
+      background: #151515;
+    }
+
+    .item-row:last-child {
+      border-bottom: none;
+    }
+
+    .item-row .title {
+      color: #d8d8d8;
+      font-weight: 500;
+    }
+
+    .item-row .artist {
+      color: #666;
+      font-size: 11px;
+    }
+
+    .btn-action {
+      border: 1px solid #222;
+      background: #121212;
+      color: #888;
+      font-family: inherit;
+      font-size: 10px;
+      padding: 4px 8px;
+      border-radius: 3px;
+      cursor: pointer;
+      margin-left: 6px;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .btn-action:hover {
+      background: #202020;
+      color: #eee;
+    }
+
+    .btn-action.play-now {
+      border-color: #2a1f15;
+      color: #b07040;
+    }
+
+    .btn-action.play-now:hover {
+      background: #25150a;
+      color: #e09050;
+    }
+
+    .search-box {
+      width: 100%;
+      border: 1px solid #1a1a1a;
+      background: #080808;
+      color: #ccc;
+      font-family: inherit;
+      font-size: 12px;
+      padding: 10px 16px;
+      border-radius: 4px;
+      outline: none;
+      margin-bottom: 12px;
+    }
+
+    .search-box:focus {
+      border-color: #333;
+    }
+
+    .footer {
+      margin-top: 48px;
+      text-align: center;
+      font-size: 11px;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>admin · radio · 013370000.xyz</h1>
+    <p class="subtitle">authenticated control panel (drag & drop queue)</p>
+
+    <div class="card">
+      <div class="row">
+        <span>NOW PLAYING</span>
+        <div class="val" id="admin-title">Loading...</div>
+      </div>
+      <div class="row">
+        <span>ARTIST</span>
+        <div class="val" id="admin-artist">—</div>
+      </div>
+      <div class="actions-bar">
+        <span style="font-size: 11px; color: #555;">ADMIN ACTIONS</span>
+        <button class="btn-skip" id="skip-btn">⚡ SKIP TRACK</button>
+      </div>
+    </div>
+
+    <div class="section-title">UPCOMING QUEUE (DRAGGABLE)</div>
+    <div class="queue-list" id="queue-container">
+      <div class="queue-header">QUEUE LIST</div>
+    </div>
+
+    <div class="section-title">LIBRARY SEARCH & PLAY NOW</div>
+    <input type="text" class="search-box" id="search-input" placeholder="Search 1450+ tracks by title, artist, album..." />
+    <div class="search-list" id="search-container">
+      <div class="queue-header">SEARCH RESULTS</div>
+    </div>
+
+    <div class="footer">
+      <span>radio control panel</span>
+    </div>
+  </div>
+
+  <script>
+    const skipBtn = document.getElementById('skip-btn');
+    const adminTitle = document.getElementById('admin-title');
+    const adminArtist = document.getElementById('admin-artist');
+    const queueContainer = document.getElementById('queue-container');
+    const searchContainer = document.getElementById('search-container');
+    const searchInput = document.getElementById('search-input');
+
+    let draggedIndex = null;
+
+    skipBtn.addEventListener('click', () => {
+      fetch('/api/admin/skip', { method: 'POST' })
+        .then(r => {
+          if (r.ok) {
+            skipBtn.innerText = 'SKIPPED!';
+            setTimeout(() => { skipBtn.innerText = '⚡ SKIP TRACK'; }, 1500);
+            loadData();
+          }
+        });
+    });
+
+    function loadQueue() {
+      fetch('/api/admin/queue')
+        .then(r => r.json())
+        .then(data => {
+          let html = '<div class="queue-header">QUEUE LIST (' + data.length + ' tracks)</div>';
+          if (!data || data.length === 0) {
+            html += '<div class="item-row"><span class="title">Queue empty</span></div>';
+            queueContainer.innerHTML = html;
+            return;
+          }
+          data.forEach((track, i) => {
+            html += `
+              <div class="item-row" draggable="true" data-index="${i}">
+                <div>
+                  <span class="title">${i + 1}. ${escapeHtml(track.title)}</span>
+                  <div class="artist">${escapeHtml(track.artist)} · ${escapeHtml(track.genre)}</div>
+                </div>
+                <div>
+                  <button class="btn-action play-now" onclick="playNow(${track.id})">▶ Play Now</button>
+                </div>
+              </div>
+            `;
+          });
+          queueContainer.innerHTML = html;
+          attachDragEvents();
+        });
+    }
+
+    function loadSearch(q = '') {
+      fetch('/api/admin/search?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(data => {
+          let html = '<div class="queue-header">SEARCH RESULTS (' + data.length + ')</div>';
+          if (!data || data.length === 0) {
+            html += '<div class="item-row"><span class="title">No tracks found</span></div>';
+            searchContainer.innerHTML = html;
+            return;
+          }
+          data.forEach((track) => {
+            html += `
+              <div class="item-row" draggable="false">
+                <div>
+                  <span class="title">${escapeHtml(track.title)}</span>
+                  <div class="artist">${escapeHtml(track.artist)} · ${escapeHtml(track.album)}</div>
+                </div>
+                <div>
+                  <button class="btn-action" onclick="addToQueue(${track.id})">+ Add Queue</button>
+                  <button class="btn-action play-now" onclick="playNow(${track.id})">▶ Play Now</button>
+                </div>
+              </div>
+            `;
+          });
+          searchContainer.innerHTML = html;
+        });
+    }
+
+    function attachDragEvents() {
+      const items = queueContainer.querySelectorAll('.item-row[draggable="true"]');
+      items.forEach(item => {
+        item.addEventListener('dragstart', (e) => {
+          draggedIndex = parseInt(item.getAttribute('data-index'));
+          e.dataTransfer.effectAllowed = 'move';
+        });
+
+        item.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        });
+
+        item.addEventListener('drop', (e) => {
+          e.preventDefault();
+          const targetIndex = parseInt(item.getAttribute('data-index'));
+          if (draggedIndex !== null && draggedIndex !== targetIndex) {
+            reorderQueue(draggedIndex, targetIndex);
+          }
+        });
+      });
+    }
+
+    function reorderQueue(from, to) {
+      fetch('/api/admin/queue/reorder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ from, to })
+      }).then(() => loadQueue());
+    }
+
+    function playNow(id) {
+      fetch('/api/admin/play-now', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      }).then(() => {
+        loadData();
+      });
+    }
+
+    function addToQueue(id) {
+      fetch('/api/admin/queue/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id })
+      }).then(() => {
+        loadQueue();
+      });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function loadData() {
+      fetch('/api/metadata')
+        .then(r => r.json())
+        .then(data => {
+          adminTitle.innerText = data.title || '—';
+          adminArtist.innerText = data.artist || '—';
+        });
+
+      loadQueue();
+    }
+
+    let searchTimeout;
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(() => {
+        loadSearch(e.target.value);
+      }, 250);
+    });
+
+    loadData();
+    loadSearch();
+    setInterval(loadData, 4000);
+  </script>
+</body>
+</html>
