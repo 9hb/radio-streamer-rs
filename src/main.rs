@@ -147,6 +147,7 @@ async fn main() {
         .route("/admin", get(handle_admin_page))
         .route("/api/metadata", get(handle_metadata_json))
         .route("/api/metadata/sse", get(handle_metadata_sse))
+        
         .route("/api/admin/skip", post(handle_admin_skip))
         .route("/api/admin/queue", get(handle_admin_queue))
         .route("/api/admin/queue/reorder", post(handle_admin_queue_reorder))
