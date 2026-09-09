@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::VecDeque,
     fs::File,
-    io::Read,
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, Instant},
@@ -67,6 +66,181 @@ pub struct ReorderReq {
     pub to: usize,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+pub struct ServerConfig {
+    #[serde(default = "default_port")]
+    pub port: u16,
+    #[serde(default = "default_bind")]
+    pub bind_address: String,
+}
+
+fn default_port() -> u16 { 9191 }
+fn default_bind() -> String { "0.0.0.0".to_string() }
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct StationConfig {
+    #[serde(default = "default_station_name")]
+    pub name: String,
+    #[serde(default = "default_music_dir")]
+    pub music_dir: String,
+    #[serde(default = "default_chunk_size")]
+    pub chunk_size: usize,
+    #[serde(default = "default_bitrate")]
+    pub default_bitrate_kbps: u64,
+}
+
+fn default_station_name() -> String { "01337000 Radio".to_string() }
+fn default_music_dir() -> String { "./music".to_string() }
+fn default_chunk_size() -> usize { 1024 }
+fn default_bitrate() -> u64 { 320 }
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct GenreClusteringConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_cluster_min")]
+    pub min: usize,
+    #[serde(default = "default_cluster_max")]
+    pub max: usize,
+}
+
+fn default_true() -> bool { true }
+fn default_cluster_min() -> usize { 3 }
+fn default_cluster_max() -> usize { 5 }
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct PlaybackConfig {
+    #[serde(default = "default_history_size")]
+    pub history_size: usize,
+    #[serde(default = "default_queue_size")]
+    pub queue_size: usize,
+    #[serde(default)]
+    pub genre_clustering: GenreClusteringConfig,
+}
+
+fn default_history_size() -> usize { 250 }
+fn default_queue_size() -> usize { 10 }
+
+impl Default for GenreClusteringConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_true(),
+            min: default_cluster_min(),
+            max: default_cluster_max(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct AdminConfig {
+    #[serde(default = "default_allowed_ips")]
+    pub allowed_ips: Vec<String>,
+}
+
+fn default_allowed_ips() -> Vec<String> {
+    Vec::new()
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct AppConfig {
+    #[serde(default)]
+    pub server: ServerConfig,
+    #[serde(default)]
+    pub station: StationConfig,
+    #[serde(default)]
+    pub playback: PlaybackConfig,
+    #[serde(default)]
+    pub admin: AdminConfig,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            port: default_port(),
+            bind_address: default_bind(),
+        }
+    }
+}
+
+impl Default for StationConfig {
+    fn default() -> Self {
+        Self {
+            name: default_station_name(),
+            music_dir: default_music_dir(),
+            chunk_size: default_chunk_size(),
+            default_bitrate_kbps: default_bitrate(),
+        }
+    }
+}
+
+impl Default for PlaybackConfig {
+    fn default() -> Self {
+        Self {
+            history_size: default_history_size(),
+            queue_size: default_queue_size(),
+            genre_clustering: GenreClusteringConfig::default(),
+        }
+    }
+}
+
+impl Default for AdminConfig {
+    fn default() -> Self {
+        Self {
+            allowed_ips: default_allowed_ips(),
+        }
+    }
+}
+
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
+            server: ServerConfig::default(),
+            station: StationConfig::default(),
+            playback: PlaybackConfig::default(),
+            admin: AdminConfig::default(),
+        }
+    }
+}
+
+impl AppConfig {
+    pub fn load() -> Self {
+        let config_path = std::env::var("CONFIG_PATH").unwrap_or_else(|_| "config.toml".to_string());
+        let mut cfg: AppConfig = if let Ok(contents) = std::fs::read_to_string(&config_path) {
+            match toml::from_str(&contents) {
+                Ok(c) => {
+                    info!("Loaded configuration from '{}'", config_path);
+                    c
+                }
+                Err(e) => {
+                    warn!("Failed to parse '{}': {}. Using defaults.", config_path, e);
+                    AppConfig::default()
+                }
+            }
+        } else {
+            info!("Config file '{}' not found, using defaults / env vars.", config_path);
+            AppConfig::default()
+        };
+
+        if let Ok(p) = std::env::var("PORT").and_then(|v| v.parse::<u16>().map_err(|_| std::env::VarError::NotPresent)) {
+            cfg.server.port = p;
+        }
+        if let Ok(b) = std::env::var("BIND_ADDRESS") {
+            cfg.server.bind_address = b;
+        }
+        if let Ok(m) = std::env::var("MUSIC_DIR") {
+            cfg.station.music_dir = m;
+        }
+        if let Ok(n) = std::env::var("STATION_NAME") {
+            cfg.station.name = n;
+        }
+        if let Ok(h) = std::env::var("HISTORY_SIZE").and_then(|v| v.parse::<usize>().map_err(|_| std::env::VarError::NotPresent)) {
+            cfg.playback.history_size = h;
+        }
+
+        cfg
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub broadcast_tx: broadcast::Sender<Bytes>,
@@ -77,36 +251,36 @@ pub struct AppState {
     pub queue: Arc<RwLock<Vec<TrackInfo>>>,
     pub next_priority_track: Arc<RwLock<Option<TrackInfo>>>,
     pub all_tracks: Arc<RwLock<Vec<TrackInfo>>>,
+    pub config: Arc<AppConfig>,
 }
 
 const BROADCAST_CAPACITY: usize = 4;
-const BUFFER_CHUNK_SIZE: usize = 1024;
-const MAX_HISTORY: usize = 250;
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let music_dir = std::env::var("MUSIC_DIR").unwrap_or_else(|_| "./music".to_string());
-    let music_path = PathBuf::from(&music_dir);
+    let config = Arc::new(AppConfig::load());
+
+    let music_path = PathBuf::from(&config.station.music_dir);
 
     if !music_path.exists() {
         warn!(
             "Music directory '{}' does not exist! Creating empty folder...",
-            music_dir
+            config.station.music_dir
         );
         std::fs::create_dir_all(&music_path).ok();
     }
 
     let tracks = scan_music_dir(&music_path);
-    info!("Scanned {} tracks from '{}'", tracks.len(), music_dir);
+    info!("Scanned {} tracks from '{}'", tracks.len(), config.station.music_dir);
 
     let (broadcast_tx, _) = broadcast::channel::<Bytes>(BROADCAST_CAPACITY);
     let (metadata_tx, _) = broadcast::channel::<CurrentMetadata>(100);
 
     let initial_meta = CurrentMetadata {
         title: "Radio Starting...".to_string(),
-        artist: "01337000 Radio".to_string(),
+        artist: config.station.name.clone(),
         album: "".to_string(),
         genre: "".to_string(),
         duration_secs: 0,
@@ -129,6 +303,7 @@ async fn main() {
         queue: queue.clone(),
         next_priority_track: next_priority_track.clone(),
         all_tracks: all_tracks.clone(),
+        config: config.clone(),
     };
 
     let b_tx = broadcast_tx.clone();
@@ -137,8 +312,20 @@ async fn main() {
     let s_notify = skip_notify.clone();
     let q_lock = queue.clone();
     let p_track = next_priority_track.clone();
+    let loop_config = config.clone();
     tokio::spawn(async move {
-        radio_loop(tracks, music_path, b_tx, m_tx, c_meta, s_notify, q_lock, p_track).await;
+        radio_loop(
+            tracks,
+            music_path,
+            b_tx,
+            m_tx,
+            c_meta,
+            s_notify,
+            q_lock,
+            p_track,
+            loop_config,
+        )
+        .await;
     });
 
     let app = Router::new()
@@ -157,12 +344,7 @@ async fn main() {
         .fallback(handle_fallback_404)
         .with_state(state);
 
-    let port: u16 = std::env::var("PORT")
-        .unwrap_or_else(|_| "9191".to_string())
-        .parse()
-        .unwrap_or(9191);
-
-    let addr = format!("0.0.0.0:{}", port);
+    let addr = format!("{}:{}", config.server.bind_address, config.server.port);
     info!("Radio streamer running on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
@@ -260,8 +442,10 @@ async fn radio_loop(
     skip_notify: Arc<Notify>,
     queue: Arc<RwLock<Vec<TrackInfo>>>,
     next_priority_track: Arc<RwLock<Option<TrackInfo>>>,
+    config: Arc<AppConfig>,
 ) {
-    let mut history: VecDeque<usize> = VecDeque::with_capacity(MAX_HISTORY + 1);
+    let history_capacity = config.playback.history_size;
+    let mut history: VecDeque<usize> = VecDeque::with_capacity(history_capacity + 1);
     let mut current_genre: Option<String> = None;
     let mut cluster_remaining = 0;
 
@@ -287,29 +471,32 @@ async fn radio_loop(
                     &history,
                     &mut current_genre,
                     &mut cluster_remaining,
+                    &config.playback.genre_clustering,
                 );
                 tracks[selected_index].clone()
             }
         };
 
         history.push_back(track.id);
-        if history.len() > MAX_HISTORY {
+        if history.len() > history_capacity {
             history.pop_front();
         }
 
         {
             let mut q = queue.write().await;
-            if q.len() < 10 {
+            let target_queue_len = config.playback.queue_size;
+            if q.len() < target_queue_len {
                 let mut temp_history = history.clone();
                 let mut temp_genre = current_genre.clone();
                 let mut temp_cluster = cluster_remaining;
 
-                while q.len() < 10 {
+                while q.len() < target_queue_len {
                     let next_idx = select_next_track(
                         &tracks,
                         &temp_history,
                         &mut temp_genre,
                         &mut temp_cluster,
+                        &config.playback.genre_clustering,
                     );
                     let next_track = tracks[next_idx].clone();
                     temp_history.push_back(next_track.id);
@@ -341,7 +528,7 @@ async fn radio_loop(
         let track_dur = if track.duration_secs > 0 {
             track.duration_secs
         } else {
-            (file_len * 8) / (320 * 1000)
+            (file_len * 8) / (config.station.default_bitrate_kbps * 1000)
         };
 
         let bytes_per_sec = if track_dur > 0 {
@@ -366,6 +553,7 @@ async fn radio_loop(
 
         let mut offset = 0usize;
         let mut total_bytes_sent = 0u64;
+        let chunk_size = config.station.chunk_size;
 
         loop {
             if offset >= mmap.len() {
@@ -386,7 +574,7 @@ async fn radio_loop(
                 _ = tokio::task::yield_now() => {}
             }
 
-            let chunk_end = (offset + BUFFER_CHUNK_SIZE).min(mmap.len());
+            let chunk_end = (offset + chunk_size).min(mmap.len());
             let chunk_bytes = Bytes::copy_from_slice(&mmap[offset..chunk_end]);
             let n = chunk_end - offset;
             offset = chunk_end;
@@ -420,6 +608,7 @@ fn select_next_track(
     history: &VecDeque<usize>,
     current_genre: &mut Option<String>,
     cluster_remaining: &mut usize,
+    clustering_cfg: &GenreClusteringConfig,
 ) -> usize {
     let mut rng = rand::rng();
 
@@ -441,11 +630,18 @@ fn select_next_track(
         }
     }
 
+    if !clustering_cfg.enabled {
+        return *eligible.choose(&mut rng).unwrap_or(&0);
+    }
+
+    let cluster_min = clustering_cfg.min.max(1);
+    let cluster_max = clustering_cfg.max.max(cluster_min);
+
     if *cluster_remaining == 0 || current_genre.is_none() {
         let chosen_idx = *eligible.choose(&mut rng).unwrap_or(&0);
         *current_genre = Some(tracks[chosen_idx].genre.clone());
-        *cluster_remaining = rng.random_range(3..=5);
-        return chosen_idx;
+        *cluster_remaining = rng.random_range(cluster_min..=cluster_max);
+        chosen_idx
     } else {
         let genre_name = current_genre.as_ref().unwrap();
         let same_genre_candidates: Vec<usize> = eligible
@@ -456,17 +652,17 @@ fn select_next_track(
 
         if !same_genre_candidates.is_empty() {
             *cluster_remaining -= 1;
-            return *same_genre_candidates.choose(&mut rng).unwrap();
+            *same_genre_candidates.choose(&mut rng).unwrap()
         } else {
             let chosen_idx = *eligible.choose(&mut rng).unwrap_or(&0);
             *current_genre = Some(tracks[chosen_idx].genre.clone());
-            *cluster_remaining = rng.random_range(3..=5);
-            return chosen_idx;
+            *cluster_remaining = rng.random_range(cluster_min..=cluster_max);
+            chosen_idx
         }
     }
 }
 
-fn is_admin_ip(headers: &HeaderMap) -> bool {
+fn is_admin_ip(headers: &HeaderMap, allowed_ips: &[String]) -> bool {
     let client_ip = headers
         .get("cf-connecting-ip")
         .or_else(|| headers.get("x-real-ip"))
@@ -474,11 +670,14 @@ fn is_admin_ip(headers: &HeaderMap) -> bool {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    client_ip.contains("89.103.195.115") || client_ip.contains("2a02:8309:810c:7600::6d64")
+    allowed_ips.iter().any(|allowed| client_ip.contains(allowed.as_str()))
 }
 
-async fn handle_admin_page(headers: HeaderMap) -> Response {
-    if !is_admin_ip(&headers) {
+async fn handle_admin_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Response {
+    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -489,7 +688,7 @@ async fn handle_admin_skip(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Response {
-    if !is_admin_ip(&headers) {
+    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -501,7 +700,7 @@ async fn handle_admin_queue(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Response {
-    if !is_admin_ip(&headers) {
+    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -514,7 +713,7 @@ async fn handle_admin_queue_reorder(
     headers: HeaderMap,
     Json(payload): Json<ReorderReq>,
 ) -> Response {
-    if !is_admin_ip(&headers) {
+    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -533,7 +732,7 @@ async fn handle_admin_search(
     headers: HeaderMap,
     Query(query): Query<SearchQuery>,
 ) -> Response {
-    if !is_admin_ip(&headers) {
+    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -562,7 +761,7 @@ async fn handle_admin_play_now(
     headers: HeaderMap,
     Json(payload): Json<PlayNowReq>,
 ) -> Response {
-    if !is_admin_ip(&headers) {
+    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -581,7 +780,7 @@ async fn handle_admin_queue_add(
     headers: HeaderMap,
     Json(payload): Json<PlayNowReq>,
 ) -> Response {
-    if !is_admin_ip(&headers) {
+    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -671,10 +870,17 @@ fn stream_audio_response(state: AppState) -> Response {
         header::TRANSFER_ENCODING,
         HeaderValue::from_static("chunked"),
     );
-    response_headers.insert(
-        HeaderName::from_static("icy-name"),
-        HeaderValue::from_static("01337000 Radio"),
-    );
+    if let Ok(station_val) = HeaderValue::from_str(&state.config.station.name) {
+        response_headers.insert(
+            HeaderName::from_static("icy-name"),
+            station_val,
+        );
+    } else {
+        response_headers.insert(
+            HeaderName::from_static("icy-name"),
+            HeaderValue::from_static("01337000 Radio"),
+        );
+    }
 
     (StatusCode::OK, response_headers, body).into_response()
 }
