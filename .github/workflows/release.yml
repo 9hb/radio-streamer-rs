@@ -2,16 +2,50 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+    paths:
+      - 'Cargo.toml'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  check-version:
+    name: Check Version Bump
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      version: ${{ steps.check.outputs.version }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine if version bumped
+        id: check
+        run: |
+          VERSION=$(grep '^version = ' Cargo.toml | head -n 1 | cut -d '"' -f 2)
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
+          # Check if git tag already exists in remote
+          if git rev-parse "${TAG}" >/dev/null 2>&1; then
+            echo "Tag ${TAG} already exists, skipping release build."
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "New version detected: ${TAG}. Proceeding with release build."
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
   build:
     name: Build (${{ matrix.target }})
+    needs: check-version
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -48,18 +82,12 @@ jobs:
 
   release:
     name: Create Release
-    needs: build
+    needs: [check-version, build]
+    if: needs.check-version.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Extract version from Cargo.toml
-        id: get_version
-        run: |
-          VERSION=$(grep '^version = ' Cargo.toml | head -n 1 | cut -d '"' -f 2)
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "tag=v${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
@@ -74,11 +102,11 @@ jobs:
           chmod +x dist/radio-streamer-linux-*
           ls -lh dist/
 
-      - name: Create or update GitHub release
+      - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.get_version.outputs.tag }}
-          name: Release ${{ steps.get_version.outputs.tag }}
+          tag_name: ${{ needs.check-version.outputs.tag }}
+          name: Release ${{ needs.check-version.outputs.tag }}
           files: |
             dist/radio-streamer-linux-x86_64
             dist/radio-streamer-linux-arm64
