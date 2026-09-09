@@ -1,0 +1,23 @@
+# radio-streamer configuration
+
+[server]
+port = 9191
+bind_address = "0.0.0.0"
+
+[station]
+name = "01337000 Radio"
+music_dir = "./music"
+chunk_size = 1024
+default_bitrate_kbps = 320
+
+[playback]
+history_size = 250
+queue_size = 10
+
+[playback.genre_clustering]
+enabled = true
+min = 3
+max = 5
+
+[admin]
+allowed_ips = []
