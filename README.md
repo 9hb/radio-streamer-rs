@@ -58,8 +58,36 @@ cd radio-streamer-rs
 # Build release binary
 cargo build --release
 
-# Run the server
-PORT=9191 MUSIC_DIR=/path/to/music ./target/release/radio-streamer
+# Run the server (reads config.toml by default)
+./target/release/radio-streamer
+```
+
+## Configuration
+
+Settings are configured via `config.toml` in the working directory (or overridden using the `CONFIG_PATH` environment variable). Environment variables (`PORT`, `BIND_ADDRESS`, `MUSIC_DIR`, `STATION_NAME`, `HISTORY_SIZE`) take precedence when set.
+
+```toml
+[server]
+port = 9191
+bind_address = "0.0.0.0"
+
+[station]
+name = "01337000 Radio"
+music_dir = "./music"
+chunk_size = 1024
+default_bitrate_kbps = 320
+
+[playback]
+history_size = 250
+queue_size = 10
+
+[playback.genre_clustering]
+enabled = true
+min = 3
+max = 5
+
+[admin]
+allowed_ips = ["127.0.0.1"]
 ```
 
 ### Endpoints
