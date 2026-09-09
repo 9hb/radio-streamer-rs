@@ -1,6 +1,6 @@
 # radio-streamer-rs
 
-> Minimalist headless audio radio streamer and Icecast-compatible broadcast engine written in Rust.
+> Headless continuous audio streamer in Rust.
 
 `radio-streamer-rs` continuously scans a local music library, extracts audio metadata, and broadcasts a real-time chunked audio stream (`audio/mpeg`) over HTTP. Any standard media player (VLC, mpv, ffmpeg, browser) can connect to the continuous stream URL with zero configuration.
 
