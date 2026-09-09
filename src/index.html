@@ -305,6 +305,26 @@
       color: #ccc;
     }
 
+    a.json-btn {
+      border: 1px solid #1c1c1c;
+      background: #0f0f0f;
+      color: #777;
+      text-decoration: none;
+      font-size: 11px;
+      padding: 4px 8px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+
+    a.json-btn:hover {
+      background: #181818;
+      color: #d8d8d8;
+      border-color: #2c2c2c;
+    }
+
     .footer {
       margin-top: 48px;
       text-align: center;
@@ -329,9 +349,12 @@
     <p class="subtitle">headless continuous icecast stream in rust</p>
 
     <div class="card">
-      <div class="row">
-        <span>NOW PLAYING</span>
-        <div class="val" id="track-title">Loading stream metadata...</div>
+      <div class="row" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <span>NOW PLAYING</span>
+          <div class="val" id="track-title">Loading stream metadata...</div>
+        </div>
+        <a href="/now-playing" target="_blank" class="json-btn">JSON</a>
       </div>
 
       <div class="row">
