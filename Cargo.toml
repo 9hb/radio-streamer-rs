@@ -20,3 +20,4 @@ walkdir = "2.5"
 symphonia = { version = "0.5", features = ["mp3", "pcm", "isomp4"] }
 memmap2 = "0.9"
 mp3lame-sys = "0.1"
+toml = "0.8"
