@@ -46,7 +46,7 @@
 ### Prerequisites
 
 - Rust 1.85+ (Edition 2024 compatible)
-- Linux / macOS (tested on Debian x86_64)
+- Linux / macOS (tested on Fedora x86_64)
 
 ### Build & Run
 
