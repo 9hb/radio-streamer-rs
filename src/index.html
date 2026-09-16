@@ -402,9 +402,10 @@
           </div>
           <span style="font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.05em;"><span class="status-indicator live" id="status-dot"></span><span id="status-text">MUTED</span></span>
         </div>
-        <span style="font-size: 10px; color: #444;">[INSTANT PLAY]</span>
+        <span style="font-size: 10px; color: #444;" title="Space: Play/Mute, ↑/↓: Volume">[SPACE: MUTE] [↑/↓: VOL]</span>
       </div>
     </div>
+
 
     <div class="vlc-info">
       <label>Direct Stream URL (VLC / mpv / ffmpeg)</label>
@@ -613,7 +614,31 @@
         .catch(() => {});
     }, 3000);
 
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.isComposing) {
+        return;
+      }
+
+      if (e.code === 'Space') {
+        e.preventDefault();
+        muteBtn.click();
+      } else if (e.code === 'ArrowUp') {
+        e.preventDefault();
+        const currentVal = parseFloat(volumeSlider.value) || 0;
+        const nextVal = Math.min(1, Math.round((currentVal + 0.05) * 100) / 100);
+        volumeSlider.value = nextVal;
+        volumeSlider.dispatchEvent(new Event('input'));
+      } else if (e.code === 'ArrowDown') {
+        e.preventDefault();
+        const currentVal = parseFloat(volumeSlider.value) || 0;
+        const nextVal = Math.max(0, Math.round((currentVal - 0.05) * 100) / 100);
+        volumeSlider.value = nextVal;
+        volumeSlider.dispatchEvent(new Event('input'));
+      }
+    });
+
     drawFallbackVisualizer();
+
   </script>
 </body>
 </html>

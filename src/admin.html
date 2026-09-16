@@ -214,6 +214,79 @@
       border-color: #333;
     }
 
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    @media (max-width: 600px) {
+      .analytics-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .chart-container {
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      background: #0a0a0a;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+
+    .chart-canvas-wrapper {
+      width: 100%;
+      height: 160px;
+      position: relative;
+    }
+
+    canvas#listener-chart {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .stat-list {
+      display: grid;
+      gap: 0;
+      border: 1px solid #1a1a1a;
+      border-radius: 4px;
+      background: #0a0a0a;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 14px;
+      border-bottom: 1px solid #151515;
+      font-size: 11px;
+    }
+
+    .stat-row:last-child {
+      border-bottom: none;
+    }
+
+    .stat-row .stat-name {
+      color: #ccc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 180px;
+    }
+
+    .stat-row .stat-badge {
+      background: #141414;
+      border: 1px solid #222;
+      color: #999;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+
     .footer {
       margin-top: 48px;
       text-align: center;
@@ -222,6 +295,7 @@
     }
   </style>
 </head>
+
 <body>
   <div class="container">
     <h1>admin · radio · 013370000.xyz</h1>
@@ -253,10 +327,39 @@
       <div class="queue-header">SEARCH RESULTS</div>
     </div>
 
+    <div class="section-title">LISTENER TREND OVER TIME</div>
+    <div class="chart-container">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <span style="font-size: 11px; color: #666; text-transform: uppercase;">Active Listeners (Recent Snapshots)</span>
+        <span id="current-listeners-badge" style="font-size: 11px; color: #4a8a4a; font-weight: 500;">0 Active</span>
+      </div>
+      <div class="chart-canvas-wrapper">
+        <canvas id="listener-chart"></canvas>
+      </div>
+    </div>
+
+    <div class="analytics-grid">
+      <div>
+        <div class="section-title">TOP PLAYED ARTISTS</div>
+        <div class="stat-list" id="top-artists-container">
+          <div class="queue-header">ARTISTS</div>
+          <div class="stat-row"><span class="stat-name">Loading...</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="section-title">TOP PLAYED GENRES</div>
+        <div class="stat-list" id="top-genres-container">
+          <div class="queue-header">GENRES</div>
+          <div class="stat-row"><span class="stat-name">Loading...</span></div>
+        </div>
+      </div>
+    </div>
+
     <div class="footer">
       <span>radio control panel</span>
     </div>
   </div>
+
 
   <script>
     const skipBtn = document.getElementById('skip-btn');
@@ -391,6 +494,139 @@
       return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
+    const listenerCanvas = document.getElementById('listener-chart');
+    const chartCtx = listenerCanvas ? listenerCanvas.getContext('2d') : null;
+    const topArtistsContainer = document.getElementById('top-artists-container');
+    const topGenresContainer = document.getElementById('top-genres-container');
+    const currentListenersBadge = document.getElementById('current-listeners-badge');
+
+    function resizeCanvas() {
+      if (!listenerCanvas) return;
+      const rect = listenerCanvas.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        listenerCanvas.width = rect.width * (window.devicePixelRatio || 1);
+        listenerCanvas.height = rect.height * (window.devicePixelRatio || 1);
+      }
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    function drawListenerChart(history) {
+      if (!listenerCanvas || !chartCtx) return;
+      resizeCanvas();
+      const w = listenerCanvas.width;
+      const h = listenerCanvas.height;
+      const dpr = window.devicePixelRatio || 1;
+      chartCtx.clearRect(0, 0, w, h);
+
+      if (!history || history.length === 0) {
+        chartCtx.fillStyle = '#444';
+        chartCtx.font = `${11 * dpr}px 'IBM Plex Mono', monospace`;
+        chartCtx.fillText('No listener data collected yet', 20 * dpr, 40 * dpr);
+        return;
+      }
+
+      const values = history.map(p => p.listeners);
+      const maxVal = Math.max(5, Math.max(...values));
+      const padding = 20 * dpr;
+      const graphW = w - padding * 2;
+      const graphH = h - padding * 2;
+
+      // Draw horizontal grid lines
+      chartCtx.strokeStyle = '#161616';
+      chartCtx.lineWidth = 1 * dpr;
+      for (let i = 0; i <= 4; i++) {
+        const y = padding + (graphH / 4) * i;
+        chartCtx.beginPath();
+        chartCtx.moveTo(padding, y);
+        chartCtx.lineTo(w - padding, y);
+        chartCtx.stroke();
+
+        const gridVal = Math.round(maxVal * (1 - i / 4));
+        chartCtx.fillStyle = '#333';
+        chartCtx.font = `${9 * dpr}px 'IBM Plex Mono', monospace`;
+        chartCtx.fillText(gridVal.toString(), 2 * dpr, y + 3 * dpr);
+      }
+
+      // Draw line and area
+      chartCtx.beginPath();
+      const step = graphW / Math.max(1, history.length - 1);
+      history.forEach((pt, idx) => {
+        const x = padding + idx * step;
+        const y = padding + graphH - (pt.listeners / maxVal) * graphH;
+        if (idx === 0) {
+          chartCtx.moveTo(x, y);
+        } else {
+          chartCtx.lineTo(x, y);
+        }
+      });
+
+      // Line style
+      chartCtx.strokeStyle = '#387a38';
+      chartCtx.lineWidth = 2 * dpr;
+      chartCtx.stroke();
+
+      // Fill area under line
+      chartCtx.lineTo(padding + (history.length - 1) * step, padding + graphH);
+      chartCtx.lineTo(padding, padding + graphH);
+      chartCtx.closePath();
+      const grad = chartCtx.createLinearGradient(0, padding, 0, padding + graphH);
+      grad.addColorStop(0, 'rgba(56, 122, 56, 0.25)');
+      grad.addColorStop(1, 'rgba(56, 122, 56, 0.0)');
+      chartCtx.fillStyle = grad;
+      chartCtx.fill();
+    }
+
+    function loadStats() {
+      fetch('/api/admin/stats')
+        .then(r => r.json())
+        .then(data => {
+          if (!data) return;
+          const current = (data.listener_history && data.listener_history.length > 0)
+            ? data.listener_history[data.listener_history.length - 1].listeners
+            : 0;
+          if (currentListenersBadge) {
+            currentListenersBadge.innerText = `${current} Active`;
+          }
+
+          drawListenerChart(data.listener_history || []);
+
+          if (topArtistsContainer) {
+            let html = '<div class="queue-header">TOP ARTISTS</div>';
+            if (!data.top_artists || data.top_artists.length === 0) {
+              html += '<div class="stat-row"><span class="stat-name">No data yet</span></div>';
+            } else {
+              data.top_artists.forEach(a => {
+                html += `
+                  <div class="stat-row">
+                    <span class="stat-name" title="${escapeHtml(a.name)}">${escapeHtml(a.name)}</span>
+                    <span class="stat-badge">${a.count} plays</span>
+                  </div>
+                `;
+              });
+            }
+            topArtistsContainer.innerHTML = html;
+          }
+
+          if (topGenresContainer) {
+            let html = '<div class="queue-header">TOP GENRES</div>';
+            if (!data.top_genres || data.top_genres.length === 0) {
+              html += '<div class="stat-row"><span class="stat-name">No data yet</span></div>';
+            } else {
+              data.top_genres.forEach(g => {
+                html += `
+                  <div class="stat-row">
+                    <span class="stat-name" title="${escapeHtml(g.name)}">${escapeHtml(g.name)}</span>
+                    <span class="stat-badge">${g.count} plays</span>
+                  </div>
+                `;
+              });
+            }
+            topGenresContainer.innerHTML = html;
+          }
+        })
+        .catch(err => console.warn("Failed to load admin stats:", err));
+    }
+
     function loadData() {
       fetch('/api/metadata')
         .then(r => r.json())
@@ -400,7 +636,9 @@
         });
 
       loadQueue();
+      loadStats();
     }
+
 
     let searchTimeout;
     searchInput.addEventListener('input', (e) => {
