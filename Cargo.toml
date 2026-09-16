@@ -3,6 +3,19 @@ name = "radio-streamer"
 version = "1.0.0"
 edition = "2024"
 
+[lib]
+name = "radio_streamer"
+path = "src/lib.rs"
+
+[[bin]]
+name = "radio-streamer"
+path = "src/main.rs"
+
+[[bench]]
+name = "broadcast_bench"
+harness = false
+
+
 [dependencies]
 tokio = { version = "1.43", features = ["full"] }
 axum = { version = "0.8", features = ["macros"] }
@@ -17,7 +30,8 @@ serde_json = "1.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 walkdir = "2.5"
-symphonia = { version = "0.5", features = ["mp3", "pcm", "isomp4"] }
+symphonia = { version = "0.5", features = ["mp3", "pcm", "isomp4", "flac", "wav", "vorbis", "aac", "ogg"] }
 memmap2 = "0.9"
 mp3lame-sys = "0.1"
 toml = "0.8"
+
