@@ -21,3 +21,19 @@ max = 5
 
 [admin]
 allowed_ips = []
+
+[rate_limit]
+enabled = true
+requests_per_minute = 60
+burst_size = 30
+max_connections_per_ip = 10
+
+[icy]
+enabled = true
+metaint = 16384
+
+[audio]
+reencode = true
+target_bitrate_kbps = 320
+target_sample_rate = 44100
+channels = 2
