@@ -1,0 +1,180 @@
+name: CI & Release
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "src/**"
+      - "benches/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/**"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "src/**"
+      - "benches/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/**"
+
+jobs:
+  check-version:
+    name: Check Cargo Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pkg.outputs.version }}
+      tag_exists: ${{ steps.tag_check.outputs.exists }}
+      should_release: ${{ steps.eval.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from Cargo.toml
+        id: pkg
+        run: |
+          VERSION=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Found version: $VERSION"
+
+      - name: Check if git tag exists
+        id: tag_check
+        run: |
+          VERSION="${{ steps.pkg.outputs.version }}"
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Tag v$VERSION already exists."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Tag v$VERSION does not exist yet."
+          fi
+
+      - name: Evaluate release condition
+        id: eval
+        run: |
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            if [ "${{ steps.tag_check.outputs.exists }}" = "true" ]; then
+              echo "Tag already exists. Skipping release, only running CI."
+              echo "release=false" >> $GITHUB_OUTPUT
+            else
+              echo "release=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "release=false" >> $GITHUB_OUTPUT
+          fi
+
+  lint:
+    name: Formatting & Clippy Lints
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Check clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+  build:
+    name: Build & Test (${{ matrix.target }})
+    needs: [check-version, lint]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            use_cross: false
+            artifact_name: radio-streamer-linux-x86_64
+          - target: aarch64-unknown-linux-gnu
+            use_cross: true
+            artifact_name: radio-streamer-linux-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.use_cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build and Test (native x86_64)
+        if: "!matrix.use_cross"
+        run: |
+          cargo check --target ${{ matrix.target }}
+          cargo build --target ${{ matrix.target }} --release
+          cargo test --target ${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/radio-streamer ${{ matrix.artifact_name }}
+
+      - name: Build and Test (cross aarch64)
+        if: matrix.use_cross
+        run: |
+          cross check --target ${{ matrix.target }}
+          cross build --target ${{ matrix.target }} --release
+          cross test --target ${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/radio-streamer ${{ matrix.artifact_name }}
+
+      - name: Upload Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+
+  release:
+    name: Create GitHub Release
+    needs: [check-version, build]
+    if: needs.check-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release binaries
+        run: |
+          mkdir -p dist
+          cp artifacts/radio-streamer-linux-x86_64/radio-streamer-linux-x86_64 dist/radio-streamer-linux-x86_64
+          cp artifacts/radio-streamer-linux-arm64/radio-streamer-linux-arm64 dist/radio-streamer-linux-arm64
+          cp config.toml dist/config.toml
+          chmod +x dist/*
+          cd dist
+          tar -czf radio-streamer-linux-x86_64.tar.gz radio-streamer-linux-x86_64 config.toml
+          tar -czf radio-streamer-linux-arm64.tar.gz radio-streamer-linux-arm64 config.toml
+          sha256sum radio-streamer-linux-x86_64.tar.gz radio-streamer-linux-arm64.tar.gz > SHA256SUMS.txt
+
+      - name: Create Git Tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ needs.check-version.outputs.version }}"
+          gh release create "$TAG" \
+            dist/radio-streamer-linux-x86_64.tar.gz \
+            dist/radio-streamer-linux-arm64.tar.gz \
+            dist/SHA256SUMS.txt \
+            --title "$TAG" \
+            --generate-notes
