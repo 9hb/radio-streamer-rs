@@ -123,6 +123,8 @@ impl Default for PlaybackConfig {
 pub struct AdminConfig {
     #[serde(default = "default_allowed_ips")]
     pub allowed_ips: Vec<String>,
+    #[serde(default)]
+    pub allowed_ips_file: Option<String>,
 }
 
 fn default_allowed_ips() -> Vec<String> {
@@ -133,6 +135,7 @@ impl Default for AdminConfig {
     fn default() -> Self {
         Self {
             allowed_ips: default_allowed_ips(),
+            allowed_ips_file: None,
         }
     }
 }

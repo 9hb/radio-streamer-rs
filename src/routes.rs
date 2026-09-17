@@ -26,7 +26,38 @@ impl Drop for StreamGuard {
     }
 }
 
-pub fn is_admin_ip(headers: &HeaderMap, allowed_ips: &[String]) -> bool {
+pub fn ip_matches(client: &str, allowed: &str) -> bool {
+    let client = client.trim();
+    let allowed = allowed.trim();
+    if client.is_empty() || allowed.is_empty() {
+        return false;
+    }
+    if client.eq_ignore_ascii_case(allowed) {
+        return true;
+    }
+    if let (Ok(std::net::IpAddr::V6(c_v6)), Ok(std::net::IpAddr::V6(a_v6))) = (
+        client.parse::<std::net::IpAddr>(),
+        allowed.parse::<std::net::IpAddr>(),
+    ) && c_v6.octets()[..8] == a_v6.octets()[..8]
+    {
+        return true;
+    }
+    client.contains(allowed)
+}
+
+pub fn is_admin_ip(headers: &HeaderMap, admin: &crate::config::AdminConfig) -> bool {
+    let mut allowed_ips = admin.allowed_ips.clone();
+    if let Some(file_path) = &admin.allowed_ips_file
+        && let Ok(content) = std::fs::read_to_string(file_path)
+    {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if !trimmed.is_empty() && !trimmed.starts_with('#') {
+                allowed_ips.push(trimmed.to_string());
+            }
+        }
+    }
+
     if allowed_ips.is_empty() {
         return true;
     }
@@ -34,7 +65,7 @@ pub fn is_admin_ip(headers: &HeaderMap, allowed_ips: &[String]) -> bool {
     let client_ip = get_client_ip(headers);
     allowed_ips
         .iter()
-        .any(|allowed| client_ip.contains(allowed.as_str()))
+        .any(|allowed| ip_matches(&client_ip, allowed))
 }
 
 pub fn get_client_ip(headers: &HeaderMap) -> String {
@@ -65,7 +96,7 @@ pub fn get_client_ip(headers: &HeaderMap) -> String {
 }
 
 pub async fn handle_admin_page(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
+    if !is_admin_ip(&headers, &state.config.admin) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -73,7 +104,7 @@ pub async fn handle_admin_page(State(state): State<AppState>, headers: HeaderMap
 }
 
 pub async fn handle_admin_skip(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
+    if !is_admin_ip(&headers, &state.config.admin) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -82,7 +113,7 @@ pub async fn handle_admin_skip(State(state): State<AppState>, headers: HeaderMap
 }
 
 pub async fn handle_admin_queue(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
+    if !is_admin_ip(&headers, &state.config.admin) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -91,7 +122,7 @@ pub async fn handle_admin_queue(State(state): State<AppState>, headers: HeaderMa
 }
 
 pub async fn handle_admin_history(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
+    if !is_admin_ip(&headers, &state.config.admin) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -100,7 +131,7 @@ pub async fn handle_admin_history(State(state): State<AppState>, headers: Header
 }
 
 pub async fn handle_admin_stats(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
+    if !is_admin_ip(&headers, &state.config.admin) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -108,7 +139,7 @@ pub async fn handle_admin_stats(State(state): State<AppState>, headers: HeaderMa
 }
 
 pub async fn handle_admin_genres(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
+    if !is_admin_ip(&headers, &state.config.admin) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -129,7 +160,7 @@ pub async fn handle_admin_queue_reorder(
     headers: HeaderMap,
     Json(payload): Json<ReorderReq>,
 ) -> Response {
-    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
+    if !is_admin_ip(&headers, &state.config.admin) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -148,7 +179,7 @@ pub async fn handle_admin_search(
     headers: HeaderMap,
     Query(query): Query<SearchQuery>,
 ) -> Response {
-    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
+    if !is_admin_ip(&headers, &state.config.admin) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -177,7 +208,7 @@ pub async fn handle_admin_play_now(
     headers: HeaderMap,
     Json(payload): Json<PlayNowReq>,
 ) -> Response {
-    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
+    if !is_admin_ip(&headers, &state.config.admin) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -197,7 +228,7 @@ pub async fn handle_admin_queue_add(
     headers: HeaderMap,
     Json(payload): Json<PlayNowReq>,
 ) -> Response {
-    if !is_admin_ip(&headers, &state.config.admin.allowed_ips) {
+    if !is_admin_ip(&headers, &state.config.admin) {
         return (StatusCode::NOT_FOUND, "404 Not Found").into_response();
     }
 
@@ -447,5 +478,61 @@ mod tests {
     fn test_get_client_ip_fallback() {
         let headers = HeaderMap::new();
         assert_eq!(get_client_ip(&headers), "127.0.0.1");
+    }
+
+    #[test]
+    fn test_ip_matches_ipv4_and_substring() {
+        assert!(ip_matches("89.103.195.115", "89.103.195.115"));
+        assert!(!ip_matches("89.103.195.116", "89.103.195.115"));
+        assert!(ip_matches("192.168.1.50", "192.168.1."));
+    }
+
+    #[test]
+    fn test_ip_matches_ipv6_slash_64_prefix() {
+        // Same /64 prefix (first 4 hextets: 2a02:8309:810c:7600)
+        let ip1 = "2a02:8309:810c:7600::a2b7";
+        let ip2 = "2a02:8309:810c:7600:d14f:8a9b:1122:3344";
+        assert!(ip_matches(ip1, ip2));
+        assert!(ip_matches(ip2, ip1));
+
+        // Different /64 prefix
+        let other_v6 = "2a02:8309:810c:7601::1";
+        assert!(!ip_matches(ip1, other_v6));
+    }
+
+    #[test]
+    fn test_is_admin_ip_with_dynamic_file() {
+        let tmp_path = std::env::temp_dir().join("test_dynamic_allowed_ips.txt");
+        std::fs::write(
+            &tmp_path,
+            "# Comment line\n2a02:8309:810c:7600::a2b7\n10.20.30.40\n",
+        )
+        .unwrap();
+
+        let admin_cfg = crate::config::AdminConfig {
+            allowed_ips: vec!["89.103.195.115".to_string()],
+            allowed_ips_file: Some(tmp_path.to_str().unwrap().to_string()),
+        };
+
+        let mut h1 = HeaderMap::new();
+        h1.insert("cf-connecting-ip", "89.103.195.115".parse().unwrap());
+        assert!(is_admin_ip(&h1, &admin_cfg));
+
+        let mut h2 = HeaderMap::new();
+        h2.insert(
+            "cf-connecting-ip",
+            "2a02:8309:810c:7600:abcd::1".parse().unwrap(),
+        );
+        assert!(is_admin_ip(&h2, &admin_cfg));
+
+        let mut h3 = HeaderMap::new();
+        h3.insert("cf-connecting-ip", "10.20.30.40".parse().unwrap());
+        assert!(is_admin_ip(&h3, &admin_cfg));
+
+        let mut h4 = HeaderMap::new();
+        h4.insert("cf-connecting-ip", "1.2.3.4".parse().unwrap());
+        assert!(!is_admin_ip(&h4, &admin_cfg));
+
+        let _ = std::fs::remove_file(tmp_path);
     }
 }
