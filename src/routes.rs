@@ -1,6 +1,6 @@
 use crate::icy::{IcyInterleaver, build_icy_headers, client_requests_icy_metadata};
 use crate::limiter::ConnectionGuard;
-use crate::metrics::MetricsTracker;
+use crate::metrics::ListenerGuard;
 use crate::models::{CurrentMetadata, PlayNowReq, ReorderReq, SearchQuery, TrackInfo};
 use crate::state::AppState;
 use axum::{
@@ -16,14 +16,8 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 struct StreamGuard {
-    metrics: Arc<MetricsTracker>,
     _conn_guard: ConnectionGuard,
-}
-
-impl Drop for StreamGuard {
-    fn drop(&mut self) {
-        self.metrics.dec_listener();
-    }
+    _listener_guard: ListenerGuard,
 }
 
 pub fn ip_matches(client: &str, allowed: &str) -> bool {
@@ -287,7 +281,7 @@ pub async fn handle_metrics(State(state): State<AppState>) -> Response {
 
 fn stream_audio_response(state: AppState, req_headers: &HeaderMap) -> Response {
     let client_ip = get_client_ip(req_headers);
-    let guard = match state.limiter.acquire(client_ip) {
+    let guard = match state.limiter.acquire(client_ip.clone()) {
         Ok(g) => g,
         Err(_) => {
             return (
@@ -301,7 +295,7 @@ fn stream_audio_response(state: AppState, req_headers: &HeaderMap) -> Response {
     let ua_str = req_headers
         .get(header::USER_AGENT)
         .and_then(|v| v.to_str().ok());
-    state.metrics.inc_listener(ua_str);
+    let listener_guard = state.metrics.acquire_listener(&client_ip, ua_str);
     state
         .stats
         .record_listener_sample(state.metrics.active_listeners());
@@ -314,8 +308,8 @@ fn stream_audio_response(state: AppState, req_headers: &HeaderMap) -> Response {
     let metaint = state.config.icy.metaint;
 
     let stream_guard = StreamGuard {
-        metrics: Arc::clone(&state.metrics),
         _conn_guard: guard,
+        _listener_guard: listener_guard,
     };
 
     // Stream generator
@@ -405,12 +399,25 @@ pub async fn handle_metadata_json(State(state): State<AppState>) -> Json<Current
     Json(meta)
 }
 
-pub async fn handle_metadata_sse(State(state): State<AppState>) -> Response {
+pub async fn handle_metadata_sse(
+    State(state): State<AppState>,
+    req_headers: HeaderMap,
+) -> Response {
+    let client_ip = get_client_ip(&req_headers);
+    let ua_str = req_headers
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok());
+    let listener_guard = state.metrics.acquire_listener(&client_ip, ua_str);
+    state
+        .stats
+        .record_listener_sample(state.metrics.active_listeners());
+
     let mut rx = state.meta_tx.subscribe();
     let metrics = Arc::clone(&state.metrics);
     let initial = state.current_meta.read().await.clone();
 
     let stream = async_stream::stream! {
+        let _guard = listener_guard;
         let mut first = initial;
         first.listeners = metrics.active_listeners();
         let json_str = serde_json::to_string(&first).unwrap_or_default();
