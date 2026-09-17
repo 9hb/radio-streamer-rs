@@ -1,4 +1,6 @@
 use crate::icy::{IcyInterleaver, build_icy_headers, client_requests_icy_metadata};
+use crate::limiter::ConnectionGuard;
+use crate::metrics::MetricsTracker;
 use crate::models::{CurrentMetadata, PlayNowReq, ReorderReq, SearchQuery, TrackInfo};
 use crate::state::AppState;
 use axum::{
@@ -13,6 +15,17 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
+struct StreamGuard {
+    metrics: Arc<MetricsTracker>,
+    _conn_guard: ConnectionGuard,
+}
+
+impl Drop for StreamGuard {
+    fn drop(&mut self) {
+        self.metrics.dec_listener();
+    }
+}
+
 pub fn is_admin_ip(headers: &HeaderMap, allowed_ips: &[String]) -> bool {
     if allowed_ips.is_empty() {
         return true;
@@ -25,13 +38,30 @@ pub fn is_admin_ip(headers: &HeaderMap, allowed_ips: &[String]) -> bool {
 }
 
 pub fn get_client_ip(headers: &HeaderMap) -> String {
-    headers
+    if let Some(cf_ip) = headers
         .get("cf-connecting-ip")
-        .or_else(|| headers.get("x-real-ip"))
-        .or_else(|| headers.get("x-forwarded-for"))
         .and_then(|v| v.to_str().ok())
-        .unwrap_or("127.0.0.1")
-        .to_string()
+    {
+        let trimmed = cf_ip.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if let Some(real_ip) = headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
+        let trimmed = real_ip.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if let Some(forwarded_for) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok())
+        && let Some(first_ip) = forwarded_for.split(',').next()
+    {
+        let trimmed = first_ip.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    "127.0.0.1".to_string()
 }
 
 pub async fn handle_admin_page(State(state): State<AppState>, headers: HeaderMap) -> Response {
@@ -252,9 +282,14 @@ fn stream_audio_response(state: AppState, req_headers: &HeaderMap) -> Response {
     let metrics = Arc::clone(&state.metrics);
     let metaint = state.config.icy.metaint;
 
+    let stream_guard = StreamGuard {
+        metrics: Arc::clone(&state.metrics),
+        _conn_guard: guard,
+    };
+
     // Stream generator
     let stream = async_stream::stream! {
-        let _guard = guard;
+        let _guard = stream_guard;
         let mut interleaver = if wants_icy {
             Some(IcyInterleaver::new(metaint))
         } else {
@@ -300,8 +335,6 @@ fn stream_audio_response(state: AppState, req_headers: &HeaderMap) -> Response {
                 }
             }
         }
-
-        metrics.dec_listener();
     };
 
     let body = Body::from_stream(stream);
@@ -374,4 +407,45 @@ pub async fn handle_metadata_sse(State(state): State<AppState>) -> Response {
     headers.insert(header::CONNECTION, HeaderValue::from_static("keep-alive"));
 
     (headers, Body::from_stream(stream)).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_get_client_ip_cf_connecting_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert("cf-connecting-ip", "203.0.113.195".parse().unwrap());
+        headers.insert("x-real-ip", "198.51.100.1".parse().unwrap());
+        headers.insert("x-forwarded-for", "192.0.2.1".parse().unwrap());
+
+        assert_eq!(get_client_ip(&headers), "203.0.113.195");
+    }
+
+    #[test]
+    fn test_get_client_ip_x_real_ip() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-real-ip", "198.51.100.1".parse().unwrap());
+        headers.insert("x-forwarded-for", "192.0.2.1, 10.0.0.1".parse().unwrap());
+
+        assert_eq!(get_client_ip(&headers), "198.51.100.1");
+    }
+
+    #[test]
+    fn test_get_client_ip_x_forwarded_for_multiple() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            " 192.0.2.55 , 10.0.0.1 ".parse().unwrap(),
+        );
+
+        assert_eq!(get_client_ip(&headers), "192.0.2.55");
+    }
+
+    #[test]
+    fn test_get_client_ip_fallback() {
+        let headers = HeaderMap::new();
+        assert_eq!(get_client_ip(&headers), "127.0.0.1");
+    }
 }

@@ -153,13 +153,13 @@ fn default_rate_limit_enabled() -> bool {
     true
 }
 fn default_requests_per_minute() -> u32 {
-    60
-}
-fn default_burst_size() -> u32 {
     30
 }
+fn default_burst_size() -> u32 {
+    5
+}
 fn default_max_connections_per_ip() -> usize {
-    10
+    5
 }
 
 impl Default for RateLimitConfig {
@@ -319,8 +319,9 @@ mod tests {
         assert_eq!(cfg.playback.genre_clustering.min, 3);
         assert_eq!(cfg.playback.genre_clustering.max, 5);
         assert!(cfg.rate_limit.enabled);
-        assert_eq!(cfg.rate_limit.requests_per_minute, 60);
-        assert_eq!(cfg.rate_limit.max_connections_per_ip, 10);
+        assert_eq!(cfg.rate_limit.requests_per_minute, 30);
+        assert_eq!(cfg.rate_limit.burst_size, 5);
+        assert_eq!(cfg.rate_limit.max_connections_per_ip, 5);
         assert!(cfg.icy.enabled);
         assert_eq!(cfg.icy.metaint, 16384);
         assert!(cfg.audio.reencode);
@@ -394,7 +395,7 @@ mod tests {
         assert_eq!(cfg.server.port, 7000);
         assert_eq!(cfg.server.bind_address, "0.0.0.0");
         assert_eq!(cfg.station.name, "01337000 Radio");
-        assert_eq!(cfg.rate_limit.max_connections_per_ip, 10);
+        assert_eq!(cfg.rate_limit.max_connections_per_ip, 5);
     }
 
     #[test]

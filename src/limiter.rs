@@ -60,6 +60,17 @@ impl StreamRateLimiter {
             return Err(RateLimitError::TooManyConcurrentConnections);
         }
 
+        let burst_window = Duration::from_secs(5);
+        let burst_count = entry
+            .recent_requests
+            .iter()
+            .filter(|&&t| now.duration_since(t) < burst_window)
+            .count();
+
+        if burst_count >= self.config.burst_size as usize {
+            return Err(RateLimitError::TooManyRequests);
+        }
+
         if entry.recent_requests.len() >= self.config.requests_per_minute as usize {
             return Err(RateLimitError::TooManyRequests);
         }
@@ -156,8 +167,31 @@ mod tests {
         drop(g1);
         let g2 = limiter.acquire(ip.clone()).expect("2nd ok");
         drop(g2);
-
         let g3 = limiter.acquire(ip);
         assert_eq!(g3.err(), Some(RateLimitError::TooManyRequests));
+    }
+
+    #[test]
+
+    fn test_burst_limit() {
+        let cfg = RateLimitConfig {
+            enabled: true,
+            requests_per_minute: 50,
+            burst_size: 3,
+            max_connections_per_ip: 10,
+        };
+        let limiter = Arc::new(StreamRateLimiter::new(cfg));
+        let ip = "10.0.0.99".to_string();
+
+        let g1 = limiter.acquire(ip.clone()).expect("1st ok");
+        drop(g1);
+        let g2 = limiter.acquire(ip.clone()).expect("2nd ok");
+        drop(g2);
+        let g3 = limiter.acquire(ip.clone()).expect("3rd ok");
+        drop(g3);
+
+        // 4th request within 5s window should be rejected even though requests_per_minute is 50
+        let g4 = limiter.acquire(ip);
+        assert_eq!(g4.err(), Some(RateLimitError::TooManyRequests));
     }
 }
